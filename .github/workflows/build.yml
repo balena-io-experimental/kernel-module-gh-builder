@@ -1,0 +1,82 @@
+name: 'Build a CW2015 battery balenaOS block'
+
+on:
+  workflow_dispatch:
+    inputs:
+      block-name:
+        required: true
+        type: string
+        default: 'cw2015-battery-osblock'
+      organization:
+        required: true
+        type: string
+        default: 'g_alex_gonzalez3'
+      repository:
+        required: true
+        type: string
+        default: 'balena-os/balena-raspberrypi'
+      board:
+        required: true
+        type: string
+        default: 'raspberrypi4-64'
+      balenaos-version:
+        required: true
+        type: string
+        default: 'master'
+
+jobs:
+  all:
+    runs-on: self-hosted
+    steps:
+      - name: Clone this repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ github.token }}
+
+      - name: Clone device repository
+        uses: actions/checkout@v3
+        with:
+          repository: ${{ inputs.repository }}
+          path: src
+          token: ${{ secrets.GITHUB_TOKEN }}
+          submodules: true
+          ref: ${{ inputs.balenaos-version }}
+
+      - name: 'Device repository check'
+        run: |
+          if [ -f "$(pwd)/src/repo.yml" ]; then
+            if grep -q "yocto-based OS image" $(pwd)/src/repo.yml; then
+              exit 0
+            fi
+          fi
+          exit 1
+
+      - name: Build
+        id: build
+        uses: alexgg/yocto-builder-action@v1
+        with:
+          machine: ${{ inputs.board }}
+          target: 'balena-block'
+          templateconf: '../../meta-balena-block/conf/samples'
+
+      - name: 'Prepare deployment'
+        id: prepare
+        run: |
+          workdir="$(pwd)/deploy/contents"
+          mkdir -p ${workdir}
+          tar xf ${{ steps.build.outputs.targz }} --directory "${workdir}"
+          sed -i "s/@@ARCH@@/${{ steps.build.outputs.arch }}/g" balena.yml
+          sed -i "s/@@KERNEL_VERSION@@/${{ steps.build.outputs.kernel-version }}/g" balena.yml
+
+      - name: Deploy
+        id: deploy
+        uses: alexgg/balena-deploy-action@v1
+        with:
+          token: ${{ secrets.BALENA_TOKEN }}
+          fleet: ${{ inputs.block-name }}
+          organization: ${{ inputs.organization }}
+          type: ${{ inputs.board }}
+          contents: ${{ github.workspace }}/deploy
+
+      - name: Log release ID
+        run: echo "Deployed release ${{ steps.deploy.outputs.release-id }}"

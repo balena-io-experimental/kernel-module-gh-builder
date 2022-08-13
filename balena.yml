@@ -1,0 +1,8 @@
+name: CW2015 battery driver
+description: >-
+  a balenaOS block containing the CW2015 linux kernel battery module
+version: 0.0.1
+type: sw.block
+data:
+  arch: @@ARCH@@
+  kernel-version: @@KERNEL_VERSION@@
